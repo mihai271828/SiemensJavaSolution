@@ -18,7 +18,7 @@ public class ItemService {
     @Autowired
     private ItemRepository itemRepository;
 
-    //proper singleTon
+    //proper SingleTon
     private static final ExecutorService executor = Executors.newFixedThreadPool(10);
     //thread-safe collections for shared state
     private final List<Item> processedItems = Collections.synchronizedList(new CopyOnWriteArrayList<>());
@@ -104,6 +104,18 @@ public class ItemService {
         }
 
     }
+
+
+    /**
+     * The main problems with the previous function were that the returned list was empty or incomplete when the
+     * function returned. Tasks would continue running in the background with no way to track their completion.
+     * Thread resources weren't properly managed. Concurrent modification of shared data structures. Error handling was minimal.
+     *
+     * The new implementation properly represents async operations by returning a CompletableFuture. Collects all individual futures and
+     * waits for all to complete. Handles exceptions properly at both individual task and aggregate levels.
+     * Uses proper thread interruption patterns. Includes resource cleanup with @PreDestroy.
+     * Uses thread-safe approaches for incrementing counters with AtomicInteger.
+     */
 
 
 }
