@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api/items")
@@ -65,7 +66,8 @@ public class ItemController {
     //added not found response for non-existent items
 
     @GetMapping("/process")
-    public ResponseEntity<List<Item>> processItems() {
-        return new ResponseEntity<>(itemService.processItemsAsync(), HttpStatus.OK);
+    public CompletableFuture<ResponseEntity<List<Item>>> processItems() {
+        return itemService.processItemsAsync()
+                .thenApply(list -> ResponseEntity.ok(list));
     }
 }

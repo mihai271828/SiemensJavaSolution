@@ -2,22 +2,28 @@ package com.siemens.internship.service;
 
 import com.siemens.internship.model.Item;
 import com.siemens.internship.repository.ItemRepository;
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 @Service
 public class ItemService {
+
     @Autowired
     private ItemRepository itemRepository;
-    private static ExecutorService executor = Executors.newFixedThreadPool(10);
-    private List<Item> processedItems = new ArrayList<>();
-    private int processedCount = 0;
+
+    //proper singleTon
+    private static final ExecutorService executor = Executors.newFixedThreadPool(10);
+    //thread-safe collections for shared state
+    private final List<Item> processedItems = Collections.synchronizedList(new CopyOnWriteArrayList<>());
+    //use AtomicInteger for concurrent updates to primitive counts
+    private final AtomicInteger processedCount = new AtomicInteger(0);
 
 
     public List<Item> findAll() {
@@ -56,34 +62,49 @@ public class ItemService {
      * Consider the interaction between Spring's @Async and CompletableFuture
      */
     @Async
-    public List<Item> processItemsAsync() {
+    public CompletableFuture<List<Item>> processItemsAsync() {
 
-        List<Long> itemIds = itemRepository.findAllIds();
-
-        for (Long id : itemIds) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    Thread.sleep(100);
-
-                    Item item = itemRepository.findById(id).orElse(null);
-                    if (item == null) {
-                        return;
+        List<Long> itemIds=itemRepository.findAllIds();
+        List<CompletableFuture<Void>> futures = itemIds.stream()
+                .map(id->CompletableFuture.runAsync(()-> {
+                    try {
+                        Thread.sleep(100);
+                        itemRepository.findById(id).ifPresent(item -> {
+                            item.setStatus("Processed");
+                            Item savedItem = itemRepository.save(item);
+                            processedItems.add(savedItem);
+                            processedCount.incrementAndGet();
+                        });
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new CompletionException("Processing interrupted", e);
+                    } catch (Exception e) {
+                        throw new CompletionException("Error processing item: " + id, e);
                     }
+                },executor)
+                        .exceptionally(ex->{
+                                    System.err.println("Error processing item: " + ex.getMessage());
+                                    return null;}))
+                .toList();
 
-                    processedCount++;
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenApply(v -> processedItems);
+    }
 
-                    item.setStatus("PROCESSED");
-                    itemRepository.save(item);
-                    processedItems.add(item);
-
-                } catch (InterruptedException e) {
-                    System.out.println("Error: " + e.getMessage());
-                }
-            }, executor);
+    @PreDestroy
+    public void shutdown() {
+        executor.shutdown();
+        try{
+            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
 
-        return processedItems;
     }
+
 
 }
 
