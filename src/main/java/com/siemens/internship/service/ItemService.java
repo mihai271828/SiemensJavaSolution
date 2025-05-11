@@ -1,5 +1,7 @@
-package com.siemens.internship;
+package com.siemens.internship.service;
 
+import com.siemens.internship.model.Item;
+import com.siemens.internship.repository.ItemRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
